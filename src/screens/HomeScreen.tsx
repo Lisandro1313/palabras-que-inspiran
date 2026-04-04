@@ -9,12 +9,33 @@ import {
   StatusBar,
   Animated,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CATEGORIAS, FRASES, Categoria, Frase, getFraseDelDia, getFraseAleatoria } from '../data/frases';
+
+const KEY_FAVORITOS = 'favoritos_frases';
 
 export default function HomeScreen() {
   const [fraseActual, setFraseActual] = useState<Frase>(getFraseDelDia());
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState<Categoria | null>(null);
   const [fadeAnim] = useState(new Animated.Value(1));
+  const [favoritos, setFavoritos] = useState<number[]>([]);
+  const [vistaFavoritos, setVistaFavoritos] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(KEY_FAVORITOS).then(v => {
+      if (v) setFavoritos(JSON.parse(v));
+    });
+  }, []);
+
+  const toggleFavorito = async (frase: Frase) => {
+    const nuevos = favoritos.includes(frase.id)
+      ? favoritos.filter(id => id !== frase.id)
+      : [...favoritos, frase.id];
+    setFavoritos(nuevos);
+    await AsyncStorage.setItem(KEY_FAVORITOS, JSON.stringify(nuevos));
+  };
+
+  const esFavorita = favoritos.includes(fraseActual.id);
 
   const cambiarFrase = (categoria?: Categoria) => {
     Animated.sequence([
@@ -42,71 +63,120 @@ export default function HomeScreen() {
 
   const categoriaActual = CATEGORIAS.find(c => c.id === fraseActual.categoria);
 
+  const frasersFavoritas = FRASES.filter(f => favoritos.includes(f.id));
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1a1a2e" />
 
-      {/* Header */}
+      {/* Header con tabs */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Palabras que Inspiran</Text>
-        <Text style={styles.headerSubtitle}>Tu frase de cada día</Text>
-      </View>
-
-      {/* Frase principal */}
-      <Animated.View style={[styles.fraseCard, { opacity: fadeAnim }]}>
-        <Text style={styles.categoriaEmoji}>{categoriaActual?.emoji}</Text>
-        <Text style={styles.fraseTexto}>"{fraseActual.texto}"</Text>
-        <Text style={styles.fraseAutor}>— {fraseActual.autor}</Text>
-        <View style={[styles.categoriaBadge, { backgroundColor: categoriaActual?.color + '33' }]}>
-          <Text style={[styles.categoriaBadgeText, { color: categoriaActual?.color }]}>
-            {categoriaActual?.label}
-          </Text>
+        <View style={styles.tabsRow}>
+          <TouchableOpacity
+            style={[styles.tab, !vistaFavoritos && styles.tabActivo]}
+            onPress={() => setVistaFavoritos(false)}
+          >
+            <Text style={[styles.tabText, !vistaFavoritos && styles.tabTextActivo]}>✨ Frases</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, vistaFavoritos && styles.tabActivo]}
+            onPress={() => setVistaFavoritos(true)}
+          >
+            <Text style={[styles.tabText, vistaFavoritos && styles.tabTextActivo]}>
+              ❤️ Favoritas {favoritos.length > 0 ? `(${favoritos.length})` : ''}
+            </Text>
+          </TouchableOpacity>
         </View>
-      </Animated.View>
-
-      {/* Botones acción */}
-      <View style={styles.accionesRow}>
-        <TouchableOpacity
-          style={styles.btnNueva}
-          onPress={() => cambiarFrase(categoriaSeleccionada || undefined)}
-        >
-          <Text style={styles.btnNuevaText}>🔄  Nueva frase</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.btnCompartir} onPress={compartir}>
-          <Text style={styles.btnCompartirText}>📤  Compartir</Text>
-        </TouchableOpacity>
       </View>
 
-      {/* Categorías */}
-      <Text style={styles.categoriasLabel}>Elegí una categoría:</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoriasScroll}
-      >
-        {CATEGORIAS.map(cat => {
-          const activa = categoriaSeleccionada === cat.id;
-          return (
-            <TouchableOpacity
-              key={cat.id}
-              style={[styles.categoriaBtn, activa && { backgroundColor: cat.color }]}
-              onPress={() => seleccionarCategoria(cat.id)}
-            >
-              <Text style={styles.categoriaEmojiBadge}>{cat.emoji}</Text>
-              <Text style={[styles.categoriaBtnText, activa && styles.categoriaBtnTextActiva]}>
-                {cat.label}
+      {!vistaFavoritos ? (
+        <>
+          {/* Frase principal */}
+          <Animated.View style={[styles.fraseCard, { opacity: fadeAnim }]}>
+            <Text style={styles.categoriaEmoji}>{categoriaActual?.emoji}</Text>
+            <Text style={styles.fraseTexto}>"{fraseActual.texto}"</Text>
+            <Text style={styles.fraseAutor}>— {fraseActual.autor}</Text>
+            <View style={[styles.categoriaBadge, { backgroundColor: categoriaActual?.color + '33' }]}>
+              <Text style={[styles.categoriaBadgeText, { color: categoriaActual?.color }]}>
+                {categoriaActual?.label}
               </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+            </View>
+          </Animated.View>
 
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>
-          {FRASES.length} frases para inspirarte cada día
-        </Text>
-      </View>
+          {/* Botones acción */}
+          <View style={styles.accionesRow}>
+            <TouchableOpacity
+              style={styles.btnNueva}
+              onPress={() => cambiarFrase(categoriaSeleccionada || undefined)}
+            >
+              <Text style={styles.btnNuevaText}>🔄  Nueva</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btnFav, esFavorita && styles.btnFavActivo]}
+              onPress={() => toggleFavorito(fraseActual)}
+            >
+              <Text style={styles.btnNuevaText}>{esFavorita ? '❤️' : '🤍'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.btnCompartir} onPress={compartir}>
+              <Text style={styles.btnCompartirText}>📤  Compartir</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Categorías */}
+          <Text style={styles.categoriasLabel}>Elegí una categoría:</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriasScroll}
+          >
+            {CATEGORIAS.map(cat => {
+              const activa = categoriaSeleccionada === cat.id;
+              return (
+                <TouchableOpacity
+                  key={cat.id}
+                  style={[styles.categoriaBtn, activa && { backgroundColor: cat.color }]}
+                  onPress={() => seleccionarCategoria(cat.id)}
+                >
+                  <Text style={styles.categoriaEmojiBadge}>{cat.emoji}</Text>
+                  <Text style={[styles.categoriaBtnText, activa && styles.categoriaBtnTextActiva]}>
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>{FRASES.length} frases para inspirarte cada día</Text>
+          </View>
+        </>
+      ) : (
+        /* Vista Favoritos */
+        <ScrollView contentContainerStyle={styles.favScroll}>
+          {frasersFavoritas.length === 0 ? (
+            <View style={styles.favVacio}>
+              <Text style={styles.favVacioEmoji}>🤍</Text>
+              <Text style={styles.favVacioTexto}>Todavía no tenés frases favoritas</Text>
+              <Text style={styles.favVacioSub}>Presioná el corazón en cualquier frase para guardarla</Text>
+            </View>
+          ) : (
+            frasersFavoritas.map(f => {
+              const cat = CATEGORIAS.find(c => c.id === f.categoria);
+              return (
+                <View key={f.id} style={[styles.favCard, { borderLeftColor: cat?.color ?? '#7B68EE' }]}>
+                  <Text style={styles.favEmoji}>{cat?.emoji}</Text>
+                  <Text style={styles.favTexto}>"{f.texto}"</Text>
+                  <Text style={styles.favAutor}>— {f.autor}</Text>
+                  <TouchableOpacity onPress={() => toggleFavorito(f)} style={styles.favEliminar}>
+                    <Text style={styles.favEliminarText}>❤️ Quitar</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -117,8 +187,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a2e',
   },
   header: {
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingTop: 56,
+    paddingBottom: 12,
     paddingHorizontal: 24,
     alignItems: 'center',
   },
@@ -128,12 +198,22 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     textAlign: 'center',
     letterSpacing: 0.5,
+    marginBottom: 12,
   },
-  headerSubtitle: {
-    fontSize: 16,
-    color: '#a0a0c0',
-    marginTop: 4,
+  tabsRow: {
+    flexDirection: 'row',
+    backgroundColor: '#0f0f1e',
+    borderRadius: 24,
+    padding: 3,
   },
+  tab: {
+    paddingVertical: 8,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+  },
+  tabActivo: { backgroundColor: '#533483' },
+  tabText: { color: '#888', fontSize: 14, fontWeight: '600' },
+  tabTextActivo: { color: '#fff' },
   fraseCard: {
     marginHorizontal: 20,
     marginVertical: 16,
@@ -194,6 +274,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  btnFav: {
+    width: 52,
+    backgroundColor: '#1a1a3e',
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#3a3a5e',
+  },
+  btnFavActivo: {
+    backgroundColor: '#4a1a2e',
+    borderColor: '#E74C3C',
+  },
   btnCompartir: {
     flex: 1,
     backgroundColor: '#533483',
@@ -206,6 +299,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  // Favoritos
+  favScroll: { padding: 16, paddingBottom: 40 },
+  favVacio: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 30 },
+  favVacioEmoji: { fontSize: 64, marginBottom: 16 },
+  favVacioTexto: { color: '#ccc', fontSize: 18, fontWeight: '600', textAlign: 'center', marginBottom: 8 },
+  favVacioSub: { color: '#777', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  favCard: {
+    backgroundColor: '#16213e',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 14,
+    borderLeftWidth: 4,
+  },
+  favEmoji: { fontSize: 28, marginBottom: 10 },
+  favTexto: { color: '#e8e8f0', fontSize: 17, fontStyle: 'italic', lineHeight: 24, marginBottom: 8 },
+  favAutor: { color: '#888', fontSize: 14, marginBottom: 10 },
+  favEliminar: { alignSelf: 'flex-start' },
+  favEliminarText: { color: '#E74C3C', fontSize: 13, fontWeight: '600' },
   categoriasLabel: {
     color: '#a0a0c0',
     fontSize: 15,
